@@ -122,11 +122,19 @@ Edit `~/.claude/plugins/shorthand/config.json` to customise behaviour:
 | `threshold` | `800` | Minimum characters before compression triggers |
 | `extra_force_tokens` | `[]` | Additional tokens to always preserve (merged with built-in defaults) |
 | `backend` | `"llmlingua"` | `"ctxprune"` swaps in [ctxprune](https://github.com/riceharvest/ctxprune)'s drop-in `PromptCompressor` (`pip install ctxprune==0.4.0`, the version tested here): CPU-only int8 ONNX model (~143 MB, no torch) and `protect=True`, which never drops an identifier, number or path. If ctxprune cannot be constructed (not installed, missing onnxruntime, or a failed model download), the hook logs one line and falls back to llmlingua. An unrecognized value is logged and uses llmlingua. |
+| `ctxprune_model` | unset | Local directory with a downloaded ctxprune model, for a pinned revision (see the ctxprune section below). Unset = ctxprune's default Hugging Face download |
 
 #### ctxprune backend: privacy, model source and first use
 
-- Prompts are compressed locally on CPU. The only network access is the one-time model download.
-- The model is `darioooooo0o/ctxprune-small` on Hugging Face (a separate account from the ctxprune package's GitHub repo). The download is **not pinned to a revision** in the ctxprune 0.4.0 release, so whatever is at the head of that model repo determines the tokens dropped from every prompt. Treat this as a trust decision until the revision is pinned upstream.
+- Prompts are compressed locally on CPU. Network access is the one-time model download (none when `ctxprune_model` is set, below). If you install `tiktoken` separately, ctxprune also fetches its `o200k_base` encoding on first use; the ctxprune 0.4.0 install does not include it.
+- The default download is **not pinned**. ctxprune 0.4.0 fetches `darioooooo0o/ctxprune-small` (a separate Hugging Face account from the ctxprune GitHub repo) at its current head, and that head decides which tokens are dropped from every prompt. To pin it, download a reviewed revision once and point the hook at the local copy:
+
+  ```bash
+  python -m pip install "ctxprune==0.4.0" huggingface_hub
+  python -c "from huggingface_hub import snapshot_download as s; print(s('darioooooo0o/ctxprune-small', revision='bb52cb4eedcbd0961bed89bce3cf508e78e01418', local_dir=\"$HOME/models/ctxprune-small-bb52cb4\"))"
+  ```
+
+  Then set `"ctxprune_model"` in `config.json` to that local directory, e.g. `"ctxprune_model": "/home/you/models/ctxprune-small-bb52cb4"`. The revision above was the model head on 2026-11-26; check the model page before you use it.
 - The first use downloads ~143 MB and can exceed the hook timeout on a long prompt. Pre-warm it once, before relying on the hook:
 
   ```bash
@@ -134,7 +142,7 @@ Edit `~/.claude/plugins/shorthand/config.json` to customise behaviour:
   python -c "from ctxprune.compat import PromptCompressor as P; P(model_name='microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank', use_llmlingua2=True, device_map='cpu')"
   ```
 
-- With `force_tokens` set, ctxprune's `protect=True` is additive: built-in and `extra_force_tokens` entries are kept, and protected atoms are also kept. This differs from llmlingua's `force_tokens` alone.
+- With `protect=True`, ctxprune keeps identifiers, numbers and paths in addition to the `force_tokens` list. This is not identical to llmlingua's `force_tokens` alone.
 
 ### Default Protected Tokens
 

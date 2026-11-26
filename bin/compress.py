@@ -107,7 +107,12 @@ def main():
                 # Same API and return keys as llmlingua; CPU int8 ONNX model, no torch.
                 # protect=True: never drop an identifier, number or path.
                 from ctxprune.compat import PromptCompressor as CtxPromptCompressor
-                compressor = CtxPromptCompressor(**init_args)
+                ctx_args = dict(init_args)
+                # Optional pinned model: a local snapshot directory (see Readme). When it is
+                # set, ctxprune loads these files and never queries the Hugging Face head.
+                if config.get("ctxprune_model"):
+                    ctx_args["model_name"] = config["ctxprune_model"]
+                compressor = CtxPromptCompressor(**ctx_args)
                 extra = {"protect": True}
             except Exception as e:
                 write_log(f"[Shorthand] backend 'ctxprune' unavailable ({e}); using llmlingua\n")
