@@ -87,21 +87,33 @@ def main():
     try:
         force_tokens = DEFAULT_FORCE_TOKENS + config.get("extra_force_tokens", [])
 
-        Compressor, extra = PromptCompressor, {}
-        if config.get("backend") == "ctxprune":
+        backend = config.get("backend", "llmlingua")
+        if backend not in ("llmlingua", "ctxprune"):
+            write_log(f"[Shorthand] unknown backend '{backend}'; using llmlingua\n")
+            backend = "llmlingua"
+
+        # model_name is the llmlingua-2 alias. ctxprune remaps it to its own model
+        # (darioooooo0o/ctxprune-small), so the value is kept for llmlingua compatibility.
+        init_args = dict(
+            model_name="microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank",
+            use_llmlingua2=True,
+            device_map="cpu",
+        )
+        compressor, extra = None, {}
+        if backend == "ctxprune":
+            # Construction is inside the try: a missing onnxruntime or a failed model
+            # download fails here and falls back to llmlingua, not to pass-through.
             try:
                 # Same API and return keys as llmlingua; CPU int8 ONNX model, no torch.
                 # protect=True: never drop an identifier, number or path.
-                from ctxprune.compat import PromptCompressor as Compressor
+                from ctxprune.compat import PromptCompressor as CtxPromptCompressor
+                compressor = CtxPromptCompressor(**init_args)
                 extra = {"protect": True}
-            except ImportError:
-                write_log("[Shorthand] backend 'ctxprune' not installed (pip install ctxprune); using llmlingua\n")
-
-        compressor = Compressor(
-            model_name="microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank",
-            use_llmlingua2=True,
-            device_map="cpu"
-        )
+            except Exception as e:
+                write_log(f"[Shorthand] backend 'ctxprune' unavailable ({e}); using llmlingua\n")
+                compressor = None
+        if compressor is None:
+            compressor = PromptCompressor(**init_args)
 
         result = compressor.compress_prompt(
             prompt,

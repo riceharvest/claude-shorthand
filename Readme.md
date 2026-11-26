@@ -121,7 +121,20 @@ Edit `~/.claude/plugins/shorthand/config.json` to customise behaviour:
 | `rate` | `0.4` | Compression aggressiveness. `0.2` = more aggressive, `0.6` = less |
 | `threshold` | `800` | Minimum characters before compression triggers |
 | `extra_force_tokens` | `[]` | Additional tokens to always preserve (merged with built-in defaults) |
-| `backend` | `"llmlingua"` | `"ctxprune"` swaps in [ctxprune](https://github.com/riceharvest/ctxprune)'s drop-in `PromptCompressor` (`pip install ctxprune`): CPU-only int8 ONNX model (~143 MB, no torch) and `protect=True`, which never drops an identifier, number or path. Falls back to llmlingua if not installed |
+| `backend` | `"llmlingua"` | `"ctxprune"` swaps in [ctxprune](https://github.com/riceharvest/ctxprune)'s drop-in `PromptCompressor` (`pip install ctxprune==0.4.0`, the version tested here): CPU-only int8 ONNX model (~143 MB, no torch) and `protect=True`, which never drops an identifier, number or path. If ctxprune cannot be constructed (not installed, missing onnxruntime, or a failed model download), the hook logs one line and falls back to llmlingua. An unrecognized value is logged and uses llmlingua. |
+
+#### ctxprune backend: privacy, model source and first use
+
+- Prompts are compressed locally on CPU. The only network access is the one-time model download.
+- The model is `darioooooo0o/ctxprune-small` on Hugging Face (a separate account from the ctxprune package's GitHub repo). The download is **not pinned to a revision** in the ctxprune 0.4.0 release, so whatever is at the head of that model repo determines the tokens dropped from every prompt. Treat this as a trust decision until the revision is pinned upstream.
+- The first use downloads ~143 MB and can exceed the hook timeout on a long prompt. Pre-warm it once, before relying on the hook:
+
+  ```bash
+  python -m pip install "ctxprune==0.4.0"
+  python -c "from ctxprune.compat import PromptCompressor as P; P(model_name='microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank', use_llmlingua2=True, device_map='cpu')"
+  ```
+
+- With `force_tokens` set, ctxprune's `protect=True` is additive: built-in and `extra_force_tokens` entries are kept, and protected atoms are also kept. This differs from llmlingua's `force_tokens` alone.
 
 ### Default Protected Tokens
 
